@@ -1,0 +1,16 @@
+# Pinned, because the README quotes exact numbers and "everything is seeded" is
+# only true if the libraries are too. sklearn in particular changes estimator
+# internals between minor versions, which moves calibrated probabilities.
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2
+matplotlib==3.9.2
+joblib==1.4.2
+requests==2.32.3
+pyyaml==6.0.2
+pyarrow==17.0.0
+mlflow==2.17.2
+pytest==8.3.3
+
+# Only needed to run part_a_metrics.ipynb:
+#   pip install jupyterlab

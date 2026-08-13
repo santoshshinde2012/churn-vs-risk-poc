@@ -1,0 +1,50 @@
+# Project and tool configuration.
+#
+# The package is not installed (the scripts run from the repo root and import
+# `churnrisk` directly), so this file exists for the tooling rather than for
+# distribution. `pythonpath` is the load-bearing part: without it, pytest run
+# from anywhere other than the repo root cannot import the package.
+
+[project]
+name = "churn-vs-risk-poc"
+version = "1.0.0"
+description = "Runnable companion code for 'Why Your Churn Model Is Not a Risk Model'"
+requires-python = ">=3.10,<3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning:matplotlib.*",
+    "ignore::DeprecationWarning:pyparsing.*",
+]
+
+[tool.ruff]
+line-length = 96
+target-version = "py310"
+extend-exclude = [
+    "outputs",                  # generated: MLflow copies source files in here
+    ".venv",
+    "part_b_databricks.py",     # Databricks notebook: `spark` and friends are injected
+    "part_a_metrics.ipynb",     # executed notebook, checked by running it
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E501",    # line length is enforced by review, not by the linter
+    "B905",    # zip(strict=): the sequences here are built together by construction
+    "SIM108",  # ternaries are not always clearer than an if/else
+]
+
+[tool.ruff.lint.isort]
+# The config imports are deliberately packed a few per line; a magic trailing
+# comma would otherwise explode them to one per line and bury the scripts'
+# actual first lines under thirty lines of imports.
+split-on-trailing-comma = false
+
+[tool.ruff.lint.per-file-ignores]
+# The pipeline scripts are meant to be read top to bottom, so they compute at
+# module level rather than hiding everything behind main().
+"0*.py" = ["E402"]

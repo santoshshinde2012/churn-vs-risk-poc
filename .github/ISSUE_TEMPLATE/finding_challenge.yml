@@ -1,0 +1,31 @@
+name: Challenge a finding
+description: You ran it and got a different answer, or you think a conclusion is wrong
+labels: [finding]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        These are the most welcome issues in this repo. Three of the article's claims are
+        contradicted or qualified by the code, and any of them could be wrong in turn.
+  - type: input
+    id: claim
+    attributes:
+      label: Claim ID
+      description: From docs/claims.md, e.g. CST-01, FBK-06, MON-02
+      placeholder: CST-01
+    validations: {required: true}
+  - type: textarea
+    id: disagreement
+    attributes:
+      label: What you think is wrong
+      description: The reasoning, not just the conclusion.
+    validations: {required: true}
+  - type: textarea
+    id: evidence
+    attributes:
+      label: The numbers
+      description: >
+        What did you run, and what came out? A diff of outputs/metrics/*.json, a modified
+        config, or a pointer to the literature all work.
+      render: shell
+    validations: {required: true}

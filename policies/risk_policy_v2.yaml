@@ -1,0 +1,54 @@
+# Risk decision policy, version 2.
+#
+# The only change from v1: finance re-measured the cost of a false decline
+# after a cohort study and it came in lower than the original estimate
+# ($500 -> $320), while chargeback fees went up ($150 -> $180).
+#
+# Nothing about the model changes. The threshold moves on its own because it is
+# derived from the costs: 320 / (320 + 180) = 0.64 instead of 0.77. Swapping
+# this file in is a config change, and 03_live_scoring_demo.py runs it against
+# the same model artifact to show the decision mix shift.
+
+version: "2.0.0"
+name: risk-checkout-scorer
+kind: blocking
+
+costs:
+  false_positive: 320     # re-measured lost lifetime value of a false decline
+  false_negative: 180     # chargeback plus the higher network fee
+  review_case: 12
+  challenge: 3
+
+bands:
+  challenge: 0.25
+  review: 0.50
+
+timeout_ms: 80
+
+fail_modes:
+  default: open
+  checkout: open
+  login: open
+  withdrawal: closed
+  password_change: closed
+  payout: closed
+
+rules:
+  velocity:
+    max_txn_60s: 5              # tightened after the card-testing wave
+    max_txn_10min: 20
+    action: review
+  new_account:
+    max_age_days: 30
+    max_amount: 250
+    action: challenge
+  network:
+    max_accounts_per_device: 3
+    action: review
+  blocklist:
+    action: block
+
+monitoring:
+  cadence_days: 1
+  psi_watch: 0.10
+  psi_alert: 0.25

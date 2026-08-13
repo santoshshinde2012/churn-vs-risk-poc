@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 430" width="1040" height="430"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Both models damage their own training data</title>
+  <desc id="desc">On the risk side a block means the outcome is never observed, so the next
+    model goes blind where it acts. On the churn side a successful retention call makes the
+    saved customer look like someone who was never leaving, so the model is punished for
+    being right. The fixes are an exploration slice and a holdout.</desc>
+
+  <defs>
+    <marker id="fbArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+            orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#52514e"/>
+    </marker>
+    <marker id="fbArrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+            orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#eb6834"/>
+    </marker>
+  </defs>
+
+  <rect width="1040" height="430" rx="10" fill="#fcfcfb"/>
+
+  <text x="34" y="40" font-size="17" font-weight="600" fill="#0b0b0b">Both models poison their own next training set</text>
+  <text x="34" y="62" font-size="12.5" fill="#52514e">In opposite directions &#8212; which is why the two fixes have nothing in common.</text>
+
+  <!-- ======================= RISK loop (left) ========================== -->
+  <g>
+    <text x="34" y="98" font-size="13" font-weight="600" fill="#eb6834">RISK &#8212; the block erases the outcome</text>
+
+    <rect x="34" y="112" width="150" height="46" rx="6" fill="#ffffff" stroke="#d8d7d3"/>
+    <text x="109" y="132" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="middle">Model scores</text>
+    <text x="109" y="148" font-size="11" fill="#52514e" text-anchor="middle">p = 0.91</text>
+
+    <line x1="184" y1="135" x2="222" y2="135" stroke="#52514e" stroke-width="1.4" marker-end="url(#fbArrow)"/>
+
+    <rect x="222" y="112" width="150" height="46" rx="6" fill="#fdf3ef" stroke="#eb6834"/>
+    <text x="297" y="132" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="middle">Blocked</text>
+    <text x="297" y="148" font-size="11" fill="#52514e" text-anchor="middle">payment never completes</text>
+
+    <line x1="297" y1="158" x2="297" y2="192" stroke="#eb6834" stroke-width="1.4" marker-end="url(#fbArrowRed)"/>
+
+    <rect x="222" y="192" width="150" height="52" rx="6" fill="#ffffff" stroke="#eb6834" stroke-dasharray="4 3"/>
+    <text x="297" y="212" font-size="12" font-weight="600" fill="#eb6834" text-anchor="middle">No chargeback</text>
+    <text x="297" y="228" font-size="11" fill="#52514e" text-anchor="middle">can ever arrive, so no</text>
+    <text x="297" y="240" font-size="11" fill="#52514e" text-anchor="middle">label will ever exist</text>
+
+    <!-- loop back -->
+    <path d="M 222 218 L 130 218 L 130 168" fill="none" stroke="#eb6834" stroke-width="1.4"
+          stroke-dasharray="4 3" marker-end="url(#fbArrowRed)"/>
+    <text x="126" y="192" font-size="10.5" fill="#eb6834" text-anchor="end">retrain</text>
+
+    <rect x="34" y="266" width="338" height="60" rx="6" fill="#f7f7f5" stroke="#d8d7d3"/>
+    <text x="50" y="286" font-size="11.5" fill="#0b0b0b">Only <tspan font-weight="600">32%</tspan> of the window&#8217;s fraud stays observable, and it is</text>
+    <text x="50" y="302" font-size="11.5" fill="#0b0b0b">missing exactly where the model was most confident.</text>
+    <text x="50" y="318" font-size="11.5" fill="#52514e">PR-AUC of the next model: <tspan font-weight="600" fill="#eb6834">0.656</tspan> against <tspan font-weight="600">0.904</tspan> possible.</text>
+
+    <rect x="34" y="338" width="338" height="60" rx="6" fill="#eef3f0" stroke="#1baf7a"/>
+    <text x="50" y="358" font-size="12" font-weight="600" fill="#0b0b0b">Fix &#8212; a 2% exploration slice</text>
+    <text x="50" y="375" font-size="11.5" fill="#52514e">let a little would-be-blocked traffic through on purpose,</text>
+    <text x="50" y="390" font-size="11.5" fill="#52514e">weighted by propensity. Recovers to <tspan font-weight="600" fill="#1baf7a">0.825</tspan>.</text>
+  </g>
+
+  <!-- ======================= CHURN loop (right) ======================== -->
+  <g>
+    <text x="668" y="98" font-size="13" font-weight="600" fill="#2a78d6">CHURN &#8212; the save erases the label</text>
+
+    <rect x="668" y="112" width="150" height="46" rx="6" fill="#ffffff" stroke="#d8d7d3"/>
+    <text x="743" y="132" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="middle">Model scores</text>
+    <text x="743" y="148" font-size="11" fill="#52514e" text-anchor="middle">p = 0.74, likely to leave</text>
+
+    <line x1="818" y1="135" x2="856" y2="135" stroke="#52514e" stroke-width="1.4" marker-end="url(#fbArrow)"/>
+
+    <rect x="856" y="112" width="150" height="46" rx="6" fill="#f2f7fd" stroke="#2a78d6"/>
+    <text x="931" y="132" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="middle">Called, and saved</text>
+    <text x="931" y="148" font-size="11" fill="#52514e" text-anchor="middle">the campaign worked</text>
+
+    <line x1="931" y1="158" x2="931" y2="192" stroke="#2a78d6" stroke-width="1.4" marker-end="url(#fbArrow)"/>
+
+    <rect x="856" y="192" width="150" height="52" rx="6" fill="#ffffff" stroke="#2a78d6" stroke-dasharray="4 3"/>
+    <text x="931" y="212" font-size="12" font-weight="600" fill="#2a78d6" text-anchor="middle">&#8220;Did not churn&#8221;</text>
+    <text x="931" y="228" font-size="11" fill="#52514e" text-anchor="middle">the model looks wrong</text>
+    <text x="931" y="240" font-size="11" fill="#52514e" text-anchor="middle">exactly where it was right</text>
+
+    <path d="M 856 218 L 764 218 L 764 168" fill="none" stroke="#2a78d6" stroke-width="1.4"
+          stroke-dasharray="4 3" marker-end="url(#fbArrow)"/>
+    <text x="760" y="192" font-size="10.5" fill="#2a78d6" text-anchor="end">retrain</text>
+
+    <rect x="668" y="266" width="338" height="60" rx="6" fill="#f7f7f5" stroke="#d8d7d3"/>
+    <text x="684" y="286" font-size="11.5" fill="#0b0b0b"><tspan font-weight="600">96</tspan> saved accounts come back as negatives. Next month&#8217;s</text>
+    <text x="684" y="302" font-size="11.5" fill="#0b0b0b">model rates that whole segment <tspan font-weight="600" fill="#2a78d6">15% lower</tspan>.</text>
+    <text x="684" y="318" font-size="11.5" fill="#52514e">Small, directional, and nothing on a dashboard fires.</text>
+
+    <rect x="668" y="338" width="338" height="60" rx="6" fill="#eef3f0" stroke="#1baf7a"/>
+    <text x="684" y="358" font-size="12" font-weight="600" fill="#0b0b0b">Fix &#8212; a holdout nobody may contact</text>
+    <text x="684" y="375" font-size="11.5" fill="#52514e">its labels still say what would have happened. Also the</text>
+    <text x="684" y="390" font-size="11.5" fill="#52514e">only way to measure the campaign: <tspan font-weight="600" fill="#1baf7a">+6.7%</tspan> retention.</text>
+  </g>
+
+  <!-- ======================= divider ==================================== -->
+  <line x1="520" y1="96" x2="520" y2="398" stroke="#d8d7d3" stroke-width="1" stroke-dasharray="3 4"/>
+  <rect x="404" y="200" width="232" height="52" rx="8" fill="#fcfcfb" stroke="#d8d7d3"/>
+  <text x="520" y="220" font-size="11.5" font-weight="600" fill="#0b0b0b" text-anchor="middle">Same shape, opposite sign</text>
+  <text x="520" y="236" font-size="11" fill="#52514e" text-anchor="middle">one hides outcomes it caused,</text>
+  <text x="520" y="248" font-size="11" fill="#52514e" text-anchor="middle">the other hides outcomes it prevented</text>
+</svg>

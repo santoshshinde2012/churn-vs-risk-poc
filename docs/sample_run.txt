@@ -1,0 +1,705 @@
+cleared outputs/ for a reproducible run
+
+==============================================================================
+>>> tests
+==============================================================================
+.................................................                        [100%]
+
+==============================================================================
+>>> 01  churn, the batch path
+==============================================================================
+2026/08/13 23:46:08 INFO mlflow.tracking.fluent: Experiment with name 'ml.churn.scorer' does not exist. Creating a new experiment.
+Successfully registered model 'ml.churn.scorer'.
+Created version '1' of model 'ml.churn.scorer'.
+==========================================================================
+CHURN PIPELINE (batch, the olive branch)
+==========================================================================
+policy: churn-retention-batch v1.0.0 | worth contacting above p = 0.027 (FP $25 vs FN $900) | nurture >= 0.10, call >= 0.35
+
+--------------------------------------------------------------------------
+1. THE LABEL IS A WINDOW YOU CHOOSE
+--------------------------------------------------------------------------
+simulated book: 20,000 accounts over 240 days of history
+ window_days  labelled_churned  churn_rate  came_back_later  false_alarm_share  days_until_label_confirms
+           7              1623       0.096              864              0.532                          7
+          14              1157       0.068              398              0.344                         14
+          30               863       0.051              104              0.121                         30
+          60               778       0.046               19              0.024                         60
+
+read the false alarm column. a 7-day window calls 53% of its churners wrong: they were on
+holiday, not leaving. a 60-day window is far cleaner, but the label only
+confirms two months after the account went quiet, which is too late to
+call anyone. this pipeline uses 30 days. it is a trade, not a truth.
+  plot saved: outputs/plots/churn_label_window.png
+
+--------------------------------------------------------------------------
+2. POINT-IN-TIME FEATURES
+--------------------------------------------------------------------------
+train snapshots [120, 150]: 33,925 rows, churn 4.8%
+test snapshot   200: 16,730 rows, churn 5.4%
+the split is by time, never at random. a random split would let the
+model learn from next month to predict last month.
+
+PR-AUC of the leaky model, scored on leaky features:  0.904  <- the demo
+PR-AUC of the leaky model, scored on real features:   0.470  <- production
+PR-AUC of the point-in-time model:                    0.742
+the leaky model looks like the best thing anyone ever built, right up
+until it is asked a question about the future. that gap is the whole
+reason to use a feature store with as-of joins.
+  plot saved: outputs/plots/churn_leakage.png
+
+--------------------------------------------------------------------------
+3. COLD START
+--------------------------------------------------------------------------
+accounts under 30 days old at scoring time: 573 of 16,730 (3.4%)
+their churn rate:      3.7%
+everyone else's:       5.5%
+PR-AUC on cold start:  0.056
+PR-AUC on the rest:    0.752
+the model is far weaker on the accounts it knows nothing about, and
+that is the honest result. do not pretend a cold account has a
+reliable score; route it by cohort rules until it has a history.
+their rolling windows are borrowed from their plan cohort, and a flag
+tells the model the numbers are not theirs. without the flag the model
+cannot tell a brand-new account from a departing one: both have zero
+actions in the last 90 days, for opposite reasons.
+
+--------------------------------------------------------------------------
+4. METRICS, AND WHETHER THE PROBABILITIES ARE REAL
+--------------------------------------------------------------------------
+PR-AUC 0.742   (random = the base rate, 0.054, so 13.7x)
+ROC-AUC 0.979   <- flattering: with a negative class this large, hundreds of
+            false positives barely move the false positive rate
+Brier 0.0233   ECE 0.0036
+precision@100  91.0%   recall@100  10.1%   lift 16.8x   (random: 5.4%)
+precision@200  88.0%   recall@200  19.5%   lift 16.3x   (random: 5.4%)
+precision@400  83.0%   recall@400  36.7%   lift 15.4x   (random: 5.4%)
+
+uncalibrated booster: Brier 0.0237  ECE 0.0040
+isotonic calibration: Brier 0.0233  ECE 0.0036
+ECE is the average gap between a predicted probability and the observed
+frequency. the decision layer multiplies these numbers by dollars, so
+the gap is the error bar on every threshold in this repo.
+  plot saved: outputs/plots/churn_calibration.png
+  plot saved: outputs/plots/churn_precision_at_k.png
+
+--------------------------------------------------------------------------
+5. THE NIGHTLY BATCH
+--------------------------------------------------------------------------
+scored 16,730 accounts on the day-200 book, out of sample: the model never saw this snapshot
+holdout: 2,505 accounts (35 of them are in the top 200 by score)
+call list: 200 accounts -> tables/retention_call_list.csv
+the holdout is excluded on purpose, and it hurts on purpose. those are
+real churners nobody will call. it is the only way to find out later
+whether calling anyone helped, and it keeps the next round of labels
+clean. 04_feedback_loops.py spends it.
+
+accounts above the cost-derived contact threshold (p > 0.027): 2,527
+calls the team can actually make:                        200
+that is the churn side in one line. losing a customer costs so much more
+than a phone call that the economics say contact almost everyone, and
+capacity is the real constraint. hence precision at k, where k is the team.
+
+--------------------------------------------------------------------------
+6. TRACKING, PROMOTION AND THE INFERENCE LOG
+--------------------------------------------------------------------------
+  registered ml.churn.scorer version 1 (run 472f1a76, tracking mlruns/)
+  ml.churn.scorer@champion -> v1 (first champion, pr_auc 0.7419)
+  batch jobs load this as models:/ml.churn.scorer@champion, so a promotion
+  changes what runs tonight without editing the job.
+  inference log: churn_batch.parquet (16,730 rows, model v1, policy v1.0.0)
+
+--------------------------------------------------------------------------
+7. CROSS-CHECK ON REAL DATA (IBM Telco Customer Churn)
+--------------------------------------------------------------------------
+7,043 customers, churn rate 26.5%
+PR-AUC 0.648 vs base rate 0.265 (2.4x)   ECE 0.0238
+precision@200 76.0% vs 26.5% at random
+same shape of result on data nobody simulated. what Telco cannot show
+is anything above: it is a snapshot, so it has no label window, no
+as-of join, no cold start and no holdout to measure against.
+
+metrics written: metrics/churn_metrics.json
+tables written:  tables/churn_scores.csv, tables/retention_call_list.csv
+state saved:     models/churn_*.{npz,parquet} (scripts 04 and 05 reuse it)
+
+==============================================================================
+>>> 02  risk, the real-time path
+==============================================================================
+2026/08/13 23:46:25 INFO mlflow.tracking.fluent: Experiment with name 'ml.risk.scorer' does not exist. Creating a new experiment.
+Successfully registered model 'ml.risk.scorer'.
+Created version '1' of model 'ml.risk.scorer'.
+==========================================================================
+RISK PIPELINE (real time, the shield)
+==========================================================================
+policy: risk-checkout-scorer v1.0.0 | block >= 0.77 (FP $500 vs FN $150) | challenge >= 0.30, review >= 0.60
+
+--------------------------------------------------------------------------
+1. THE STREAM
+--------------------------------------------------------------------------
+transactions: 279,030 over 240 days   true fraud rate: 0.51%
+pattern
+card_testing       382
+legit           277610
+ring               457
+takeover           581
+
+the card_testing rows start on day 200: same accounts, completely different
+behaviour. that is the adversary, not a data bug.
+
+--------------------------------------------------------------------------
+2. LABEL MATURATION
+--------------------------------------------------------------------------
+  23.0% of chargebacks have landed  30 days after the transaction
+  68.7% of chargebacks have landed  60 days after the transaction
+  89.3% of chargebacks have landed  90 days after the transaction
+  100.0% of chargebacks have landed 120 days after the transaction
+
+today is day 240. of 1,420 transactions that really were fraud, 959
+have a chargeback on file. the other 461 read as legitimate right now.
+
+rows old enough to trust (90-day maturation): 163,570 of 279,030 (59%), everything up to day 150.
+days 150 to 240 are the blind window: partially labelled, and biased
+one way, because every label still in flight is a positive.
+  plot saved: outputs/plots/risk_label_maturation.png
+
+computing point-in-time features (one pass over the stream)...
+
+PR-AUC on days 200-240, scored against what really happened:
+  A  matured labels only, 163,570 rows to day 150:  0.855
+  B  all rows to day 200, labels as they look today: 0.885
+  C  all rows to day 200, labels from the future:    0.909   (impossible)
+
+B minus C is the cost of the missing labels alone: -0.025. same rows,
+same recipe, same amount of data. the only difference is that B trained
+on 103 frauds labelled as legitimate, because their chargebacks had not
+landed yet. that is the tax for ignoring maturation.
+
+A minus C is the cost of being stale: -0.054. A is the honest choice
+and it is still 90 days behind the attack. no drift chart fixes that;
+only rules and fast signals cover the gap. section 6 measures them.
+  plot saved: outputs/plots/risk_label_maturation_cost.png
+
+--------------------------------------------------------------------------
+3. VALIDATION: OUT OF TIME, NEVER SHUFFLED
+--------------------------------------------------------------------------
+out of time, days 150-200 (honest):   0.943
+out of time, drift week 200-240:     0.855
+
+both models, scored on the same 21,034 held-out drift-week rows:
+  shuffled split, trained on a random 60% of everything: 0.988
+  time split, trained on matured data to day 150:      0.877
+
+the shuffled model looks +0.112 better and it has learned nothing extra.
+its training set contained 60% of the card-testing bursts, so it is
+being asked to recognise the second half of an attack whose first half
+it memorised. that is not generalisation, and there is no version of
+production where that data was available.
+  plot saved: outputs/plots/risk_validation_gap.png
+
+--------------------------------------------------------------------------
+4. CALIBRATION
+--------------------------------------------------------------------------
+days 150-200:   Brier 0.00100   ECE 0.00098
+drift week:  Brier 0.00203   ECE 0.00227
+
+calibration is fitted on the training window and it decays with
+everything else. the block threshold is arithmetic on these
+probabilities, so when calibration drifts the threshold quietly stops
+meaning what the cost model says it means. this is the number to alarm
+on, and it needs no labels at inference time, only at review time.
+  plot saved: outputs/plots/risk_calibration.png
+
+--------------------------------------------------------------------------
+5. THE THRESHOLD IS IN DOLLARS
+--------------------------------------------------------------------------
+from the policy file: block when p > 0.77   (FP $500 vs FN $150)
+  cost at the derived threshold 0.77:  $    19,100
+  cost at the default           0.50:  $    14,950
+  cost at the measured minimum  0.38:  $    12,800
+
+the measured minimum beats the default by $2,150 (14%). whatever else is
+true, 0.5 is not the answer to a question nobody asked it.
+
+derived 0.77 vs measured 0.38. the gap is a calibration story:
+  ECE over everything:            0.0010   <- looks perfect
+  ECE over the decision region (p >= 0.05, 463 rows): 0.1226
+  rows scored between 0.38 and 0.77: 68, and 91% of them really were fraud
+
+that last line is the whole thing. the model says those rows are around
+55% likely to be fraud and they are actually 91% fraud, so the
+arithmetic that produced 0.77 was fed a number that was not true. the
+global ECE never saw it, because it is an average over a population that
+is 99% easy negatives.
+
+so: derive the threshold from costs to start, then recompute it from the
+inference log against measured outcomes, and re-check calibration inside
+the decision region rather than over the whole score range.
+  plot saved: outputs/plots/risk_cost_curve.png
+
+--------------------------------------------------------------------------
+6. FOUR BANDS, AND THE RULES BESIDE THEM
+--------------------------------------------------------------------------
+blocklist built from matured data only: 61 devices
+devices, not cards. blocklisting a compromised card punishes the victim
+for having been defrauded; the device stays with the attacker.
+
+            window  fraud_blocked_by_model  fraud_touched_model_only  fraud_touched_rules_only  fraud_touched_together  insult_model_only  insult_together
+      days 150-200                  0.6798                    0.8792                    0.1742                  0.8792             0.0001           0.0001
+drift week 200-240                  0.5412                    0.7976                    0.1671                  0.7976             0.0000           0.0000
+
+decision mix, days 150-200 (rows: final action, columns: 0 legit / 1 fraud)
+is_fraud          0    1
+final_action            
+allow         62251   43
+block             4  243
+challenge        18   47
+review            0   23
+
+decision mix, drift week 200-240 (rows: final action, columns: 0 legit / 1 fraud)
+is_fraud          0    1
+final_action            
+allow         52392   86
+block             1  230
+challenge        12   34
+review            1   75
+
+on the drift week, with no model at all, the rules alone would touch 17%
+of the fraud. they add 0 catches on top of a working model.
+rules
+no rule fired    354
+velocity          65
+network            6
+
+the incremental number is small, and that is the honest result: a model
+that is working catches most of what a velocity limit catches. the case
+for the rules is the other two columns. they need no labels, so they do
+not care that training data stops on day 150, and they need no endpoint,
+so they keep working when scoring does not. 03_live_scoring_demo.py runs
+that second case: the rules are what stands between a scoring outage and
+waving every transaction through.
+  plot saved: outputs/plots/risk_rules_coverage.png
+
+--------------------------------------------------------------------------
+7. COLD START
+--------------------------------------------------------------------------
+transactions from accounts under 30 days old: 4,105 (3.6% of the window)
+  fraud rate on new accounts:   7.02%
+  fraud rate on aged accounts:  0.44%
+  ratio: 15.8x
+the opposite of the churn side. there, a new account is simply unknown;
+here it is the highest-risk segment there is, and it is the segment with
+the least history to score on. so the compensating controls in the policy
+do the work: an amount ceiling, device and network signals, stricter
+defaults, until the account has a past worth reading.
+
+--------------------------------------------------------------------------
+8. TRACKING, PROMOTION AND THE INFERENCE LOG
+--------------------------------------------------------------------------
+  registered ml.risk.scorer version 1 (run 6f259d05, tracking mlruns/)
+  ml.risk.scorer@champion -> v1 (first champion, pr_auc_oot 0.9428)
+  inference log: risk_serving.parquet (115,460 rows, no outcomes attached)
+  every row is logged with no outcome, on purpose. the outcome arrives
+  months later and gets joined in then. 04_feedback_loops.py picks it up
+  from here, which is where the selective label problem starts.
+
+metrics written: metrics/risk_metrics.json
+model saved:     models/risk_model.joblib  (also registered as ml.risk.scorer@champion)
+live sample:     tables/live_sample.csv  (for 03_live_scoring_demo.py)
+
+==============================================================================
+>>> 03  serving, with an outage
+==============================================================================
+============================================================================================
+LIVE SCORING DEMO
+============================================================================================
+model:  models:/ml.risk.scorer@champion
+policy: risk-checkout-scorer v1.0.0 | block >= 0.77 (FP $500 vs FN $150) | challenge >= 0.30, review >= 0.60
+budget: 80 ms end to end, including the feature lookup
+fail modes: default=open, checkout=open, login=open, withdrawal=closed, password_change=closed, payout=closed
+--------------------------------------------------------------------------------------------
+  # action_type      decision    p(fraud)   latency truth  note
+--------------------------------------------------------------------------------------------
+  1 login            BLOCK          0.918    37.5ms FRAUD  
+  2 withdrawal       ALLOW          0.000     9.1ms legit  
+  3 login            BLOCK          0.815     8.0ms FRAUD  
+  4 checkout         ALLOW          0.000     8.3ms FRAUD  
+  5 checkout         ALLOW          0.000     8.1ms legit  
+  6 withdrawal       ALLOW          0.009     9.4ms FRAUD  
+  7 checkout         ALLOW          0.000     8.1ms legit  
+  8 withdrawal       ALLOW          0.000     8.1ms legit  
+  9 login            ALLOW          0.000     8.7ms legit  
+ 10 checkout         ALLOW          0.000     7.7ms legit  
+ 11 checkout         ALLOW          0.000     7.8ms legit  
+ 12 checkout         ALLOW          0.000     7.0ms legit  
+ 13 checkout         ALLOW          0.000     6.9ms legit  
+ 14 checkout         ALLOW          0.000     8.9ms legit  
+ 15 checkout         ALLOW          0.000     7.5ms legit  
+ 16 login            CHALLENGE      0.599     7.6ms FRAUD  
+--------------------------------------------------------------------------------------------
+... the scoring endpoint stops answering here (simulated outage) ...
+--------------------------------------------------------------------------------------------
+ 17 password_change  CHALLENGE         --    81.9ms legit  fail closed (password_change): step-up verification
+ 18 login            REVIEW            --    81.5ms FRAUD  model down; velocity rule fired: 8 txns in 60s (limit 6)
+ 19 login            ALLOW             --    82.5ms legit  fail open (login): flagged for async review
+ 20 password_change  CHALLENGE         --    82.2ms legit  fail closed (password_change): step-up verification
+ 21 checkout         ALLOW             --    82.5ms legit  fail open (checkout): flagged for async review
+ 22 checkout         ALLOW             --    82.3ms legit  fail open (checkout): flagged for async review
+ 23 login            ALLOW             --    84.2ms FRAUD  fail open (login): flagged for async review
+ 24 checkout         ALLOW             --    84.2ms legit  fail open (checkout): flagged for async review
+ 25 checkout         ALLOW             --    84.0ms FRAUD  fail open (checkout): flagged for async review
+ 26 checkout         ALLOW             --    83.6ms legit  fail open (checkout): flagged for async review
+ 27 checkout         ALLOW             --    83.8ms legit  fail open (checkout): flagged for async review
+ 28 withdrawal       CHALLENGE         --    87.4ms FRAUD  fail closed (withdrawal): step-up verification
+ 29 login            ALLOW             --    83.5ms legit  fail open (login): flagged for async review
+ 30 checkout         ALLOW             --    82.1ms legit  fail open (checkout): flagged for async review
+ 31 checkout         ALLOW             --    82.0ms FRAUD  fail open (checkout): flagged for async review
+ 32 checkout         ALLOW             --    82.1ms legit  fail open (checkout): flagged for async review
+--------------------------------------------------------------------------------------------
+LATENCY
+  healthy: p50 8.1 ms   p95 16.4 ms   max 37.5 ms   budget 80 ms
+  outage:  every call gives up at the budget, p50 82.5 ms   max 87.4 ms
+  the timeout is the point. without it the library would wait for as
+  long as the endpoint wanted, and a scoring outage would become a
+  checkout outage.
+
+WHAT THE OUTAGE COST
+  healthy  16 requests, 5 of them fraud, 3 stopped or flagged
+  outage   16 requests, 5 of them fraud, 2 stopped or flagged
+
+  3 of the 16 requests during the outage were irreversible actions.
+  those failed closed: verification required rather than waved through.
+  1 fraudulent request(s) during the outage were caught by a rule
+  with no model in the loop at all.
+
+  everything else was allowed and flagged for asynchronous review.
+  that is the honest cost of failing open, and it is the reason the
+  flag queue exists rather than being a nice-to-have.
+
+--------------------------------------------------------------------------------------------
+CHANGING THE DECISION LAYER WITHOUT TOUCHING THE MODEL
+--------------------------------------------------------------------------------------------
+v1.0.0: block >= 0.77   v2.0.0: block >= 0.64   (finance re-measured the cost of a false decline)
+
+replaying 279,030 stored scores from 02 through both policy files:
+v2.0.0      allow  block  challenge  review
+v1.0.0                                     
+allow      277648      0         55       0
+block           0    920          0       0
+challenge       0      0        155      79
+review          0    124          0      49
+
+258 of 279,030 decisions move (0.09%). no retraining,
+no redeploy, no data science involved. a threshold is a business input,
+and the model artifact is the wrong place to keep one.
+
+that is also why the policy version is on every inference log row: when
+the block rate jumps overnight, the first question is which of the two
+things changed, and the log answers it without anyone guessing.
+
+inference log: risk_live.parquet (32 rows with latency and outcome attached)
+policy_version final_action  n   share
+         1.0.0        allow 25 0.78125
+         1.0.0    challenge  4 0.12500
+         1.0.0        block  2 0.06250
+         1.0.0       review  1 0.03125
+  plot saved: outputs/plots/risk_latency.png
+metrics written: metrics/live_metrics.json
+
+==============================================================================
+>>> 04  what acting on a prediction costs
+==============================================================================
+==============================================================================
+FEEDBACK LOOPS: WHAT ACTING ON A PREDICTION DOES TO THE NEXT TRAINING SET
+==============================================================================
+
+##############################################################################
+PART A. CHURN
+##############################################################################
+randomised test months (50/50): [90, 110, 130, 150]
+targeting month (standing 15% holdout): day 170
+book on day 170: 16,874 accounts   counterfactual churn rate 4.99%
+
+eligible (score >= 0.10) on day 170: 1,682
+  contacted (treated): 1,439
+  held out (control):  243   <- nobody touches these
+pooled across all 5 months: 4,437 treated, 3,192 control
+
+on day 170 the campaign saved 96 accounts and talked 27 into leaving.
+both numbers are invisible in production. what the warehouse records is
+simply whether each account churned, with no note about why.
+
+------------------------------------------------------------------------------
+A1. INCREMENTAL RETENTION: THE ONLY HONEST MEASURE
+------------------------------------------------------------------------------
+churn among the 4,437 called:      38.56%   95% CI [37.13%, 39.99%]
+churn among the 3,192 held out:    45.27%   95% CI [43.54%, 47.00%]
+
+incremental retention: +6.71% +/- 2.24% (significant at 95%)
+
+this number does not exist without the holdout. the campaign's own
+numbers would say the called accounts churned less than the book average,
+which is true and means nothing: they were picked for being different.
+
+------------------------------------------------------------------------------
+A2. THE MODEL LOOKS WRONG EXACTLY WHERE IT WAS RIGHT
+------------------------------------------------------------------------------
+the 96 saved accounts scored 0.55 on average, well into the call band.
+in the next training set they are labelled 'did not churn'. the model
+gets punished for the prediction that caused the save.
+
+next month's model, trained on the labels the campaign left behind: PR-AUC 0.717
+next month's model, trained on labels no campaign touched:          PR-AUC 0.729
+difference: -0.012
+
+average score given to persuadable accounts:
+  by the contaminated model: 0.4763
+  by the clean model:        0.5626
+  the contaminated model rates them 15.3% lower
+
+saveable churners in tomorrow's top 200, by which labels trained the model:
+  contaminated: 99
+  clean:        107
+
+this is one round. the effect is small and it is directional, which is the
+dangerous combination: nothing in a monitoring dashboard fires, and the
+model gets a little worse at finding the segment the programme is best at
+keeping, every month, forever. the holdout is what arrests it. those rows
+never got called, so their labels still say what would have happened, and
+a model trained with them in it keeps a memory of the world before the
+campaign existed.
+
+------------------------------------------------------------------------------
+A3. WHO CAN BE TALKED OUT OF IT (UPLIFT, NOT RISK)
+------------------------------------------------------------------------------
+uplift models fitted on months [90, 110, 130, 150] (2,998 contacted, 2,949 control)
+applied to the 1,682 eligible accounts on day 170
+
+composition of the top decile by churn score:
+  persuadable   41.1%
+  sure_thing    13.1%
+  lost_cause    39.9%
+  sleeping_dog  6.0%
+
+40% of the accounts a risk model is most confident about cannot be saved:
+by the time the signal is unambiguous, the decision is old. another
+6% were staying until someone reminded them they were paying
+for this. neither belongs on a call list, and no churn score can tell
+you which is which, because both look exactly like leaving.
+
+same budget of 200 calls, six ways of spending it
+(customers kept is the simulator's truth, not an estimate):
+                             strategy  customers_kept  per_100_calls  lost_causes  sleeping_dogs
+                   highest risk score           19.24           9.62           73             13
+           highest uplift (T-learner)           14.48           7.24           49             25
+ highest uplift (transformed outcome)           16.37           8.19           52             17
+highest risk, screened by uplift sign           21.88          10.94           66             12
+                            at random           14.40           7.20           30             24
+                  clairvoyant ceiling           72.70          36.35            0              0
+
+screening out the accounts with a non-positive estimated uplift and then
+calling the riskiest of what is left keeps +2.6 customers (+14%)
+for the same 200 calls. it drops 633 of 1,682 accounts before ranking.
+
+ranking by the same uplift estimate does worse than the plain risk score (16.4 vs 19.2).
+that is not a contradiction, and it is the practical lesson in this section.
+  correlation of the risk score with the true effect: +0.263
+  correlation of the uplift estimate with it:         +0.011
+
+the sign of a treatment effect is estimable from a quarter of experiments.
+its magnitude, per account, is not: it is a difference between two noisy
+quantities, and the noise is larger than the thing being measured. so use
+the uplift model for what it can support - excluding the people a call
+would waste or backfire on - and let the churn score do the ranking inside
+what survives. treating an uplift score as a league table is how uplift
+projects get cancelled.
+
+and the headroom is real: a clairvoyant list keeps 73, against 22 for the best
+rule here. most of that gap buys more experiments, not a better model.
+  plot saved: outputs/plots/churn_uplift.png
+
+##############################################################################
+PART B. RISK
+##############################################################################
+the model was live over days 150-200: 62,629 transactions
+  blocked: 246   of which really fraud: 242
+  allowed: 62,383
+
+blocking is also a decision not to find out. those 246 transactions never
+completed, so no chargeback can ever arrive against them, and no label
+will ever exist. the fraud among them is not mislabelled; it is absent.
+
+fraud visible to the next retrain: 114 of 356 (32%)
+the model is blindest on exactly the transactions it is most sure about.
+
+------------------------------------------------------------------------------
+B1. FOUR WAYS TO BUILD THE NEXT TRAINING SET
+------------------------------------------------------------------------------
+each retrained on the deployment window, then scored on days 200-240:
+
+  naive: retrain on what was allowed         PR-AUC 0.656
+  + exploration slice (2%, IPW)              PR-AUC 0.825   recovers 68% of the gap
+  + review-queue labels                      PR-AUC 0.806   recovers 61% of the gap
+  oracle: every outcome observed             PR-AUC 0.904
+
+note the third row. adding review-queue labels made things worse, not
+better (0.806 against 0.825), and that is the reviewers, not the queue.
+they are wrong 12% of the time here, and a wrong label in the band
+the model is least sure about does more damage than a missing one. use
+review decisions as labels, carefully, and measure the reviewers first.
+
+the naive retrain is the one that happens by default, because nothing
+about it looks wrong: the query runs, the rows come back, the model
+trains. it is 0.248 PR-AUC behind what the same window could
+have produced, and it costs 2% of blocked traffic to buy most of that
+back. that is the trade: a small, deliberate, budgeted amount of fraud
+let through, in exchange for a model that can still see next year.
+
+one thing an exploration slice is not: a shadow challenger. a challenger
+in shadow mode scores everything and decides nothing, which makes it a
+good way to compare two models on the same traffic, and no help at all
+here. it inherits the champion's censored labels, because the champion
+is still the one deciding what completes.
+  plot saved: outputs/plots/risk_selective_labels.png
+
+metrics written: metrics/feedback_metrics.json
+
+==============================================================================
+>>> 05  monitoring, two clocks
+==============================================================================
+==============================================================================
+MONITORING ON TWO CLOCKS
+==============================================================================
+
+------------------------------------------------------------------------------
+RISK: DAILY, NO LABELS REQUIRED  (alert at PSI 0.25, cadence 1d)
+------------------------------------------------------------------------------
+flag rate on the training window: 0.391%
+alarm: last 7 days against the 28 days before them, 3 standard errors
+
+days monitored: 55   (day 185 to 239)
+                                before the change      after
+median worst PSI                            0.099      0.145
+median 7-day flag rate                     0.338%     0.612%
+alerting days, PSI                              0          0
+alerting days, 7-day z-score                    0         11
+alerting days, naive 2x rule                    0          8
+  same z, training baseline                     0         25
+
+the last row is the identical statistic against a fixed reference - the
+training window's 0.391% - rather than a rolling one. it alerts on more
+than twice as many days after the change (25 against 11), and with only
+15 quiet days here this window cannot tell you whether that is more
+sensitivity or more noise. it is worth knowing which before shipping it.
+
+the rolling reference is the safer default anyway, because it does not
+assume the flag rate is stationary, and on this stream it plainly is not:
+it ranges from 0.142% to 1.101% across the monitoring window, with fraud
+rings arriving in bursts. a fixed reference bakes one arbitrary fortnight
+in as the definition of normal.
+
+as configured, the alarm fires on 0 of 15 quiet days and on 11 of the 40 after.
+
+first alert from population PSI:      never fired
+first alert from the 7-day flag rate: day 203
+
+the population PSI never fires, and that is not a bug in the monitor.
+the card-testing wave is 0.72% of the transactions in that window. a
+statistic computed over the whole population cannot see a change that
+small, and lowering the threshold until it does would produce an alert
+every week for reasons that are never attacks.
+
+the flag rate sees it because the attack is concentrated exactly where
+the flag rate looks: the top of the score distribution.
+
+first alert of any kind: day 203, 3 day(s) after the tactics changed.
+
+the first alerting week:
+ day    n  worst_psi  flag_rate_7d   z_7d
+ 203 1312      0.114         0.007  3.570
+ 204 1309      0.114         0.008  4.540
+ 205 1284      0.148         0.008  6.582
+ 206 1287      0.139         0.009  9.097
+ 207 1286      0.097         0.011 13.904
+ 208 1299      0.128         0.011 14.279
+ 209 1259      0.110         0.010 12.785
+
+the same change, seen through labels:
+  tactic changes                      day 200
+  distribution monitor alerts         day 203
+  chargebacks mature enough to score  day 290
+
+that is a 87-day head start, and it is the whole argument for monitoring
+inputs rather than outcomes on this side. a PR-AUC chart is the right
+way to grade a model and the wrong way to notice an attack: by the time
+it moves, the attack is a quarter old and has already been paid for.
+
+the distribution monitor cannot tell you the model got worse. it can only
+tell you the traffic stopped looking like the training set, which is a
+weaker claim and an earlier one. on this side, earlier wins.
+
+------------------------------------------------------------------------------
+CHURN: MONTHLY  (alert at PSI 0.25, cadence 30d)
+------------------------------------------------------------------------------
+baseline snapshot: day 90
+
+ snapshot  months_after_baseline  book           worst_signal  worst_psi  score_psi verdict
+      120                      1 16954 days_since_last_action      0.276      0.058   alert
+      150                      2 16971 days_since_last_action      0.161      0.053   watch
+      180                      3 16802 days_since_last_action      0.149      0.047   watch
+      210                      4 16458       account_age_days      0.110      0.030   watch
+
+30 days between checks. the worst signal peaks at 0.276 against a 0.25 threshold,
+crossing it once, at month 1, on days_since_last_action, and settling back
+to 0.110 by month 4 with nobody doing anything about it.
+
+that is the shape of drift rather than an incident: one threshold
+crossing that decays on its own. on a daily clock it would have been
+thirty pages. on a monthly clock it is a line in a review.
+
+nothing on this side needs a daily job, an on-call rota or a fast retrain.
+checking it weekly would produce the same decisions and four times the noise.
+
+what moves most slowly and steadily: days_since_last_action.
+the book ages, engagement distributions shift with it, and that is a
+retraining schedule, not an incident.
+  plot saved: outputs/plots/monitoring_two_clocks.png
+
+metrics written: metrics/monitoring_metrics.json
+tables written:  tables/risk_drift_daily.csv, tables/churn_drift_monthly.csv
+
+==============================================================================
+>>> claims ledger
+==============================================================================
+claims ledger: 28 claims, 67 measurements
+  confirmed: 20   contradicted: 2   demonstrated: 3   qualified: 3
+every claim still holds against the current run.
+rendered docs/claims.md
+
+==============================================================================
+>>> dashboard
+==============================================================================
+dashboard written: outputs/dashboard.html (675 KB, self-contained)
+
+==============================================================================
+SUMMARY
+==============================================================================
+  ok       1.9s  tests
+  ok      14.1s  01_churn_batch_pipeline.py
+  ok      12.3s  02_risk_realtime_pipeline.py
+  ok       5.1s  03_live_scoring_demo.py
+  ok       9.9s  04_feedback_loops.py
+  ok       6.5s  05_monitoring_two_clocks.py
+  ok       0.1s  claims ledger
+  ok       0.1s  dashboard
+          49.9s  total
+
+outputs/
+  metrics/    one json per pipeline
+  plots/      every figure
+  tables/     scores, call list, drift history
+  inference/  the request log (the inference-tables stand-in)
+  mlruns/     MLflow tracking and the @champion aliases
+  dashboard.html  a self-contained summary of this run
+
+docs/claims.md re-rendered from the ledger.

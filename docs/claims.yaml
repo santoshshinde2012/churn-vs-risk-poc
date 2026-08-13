@@ -1,0 +1,600 @@
+# ============================================================================
+# THE CLAIMS LEDGER
+# ============================================================================
+#
+# This file is the contract between the article and the code.
+#
+# Every substantive claim the article makes is written down here once, with a
+# verdict and a pointer to the exact metric in outputs/metrics/*.json that
+# supports or refutes it. `scripts/verify_claims.py` resolves every pointer
+# against a real run, so a claim cannot quietly stop being true: if a seed
+# moves, a threshold changes or a generator is retuned, CI fails and names the
+# claim that broke.
+#
+# It is also the source of docs/claims.md, the traceability matrix. Edit this
+# file, never that one.
+#
+# ----------------------------------------------------------------------------
+# Verdicts
+# ----------------------------------------------------------------------------
+#   confirmed     the run supports the claim as stated
+#   qualified     the run supports it, with a caveat that changes what you do
+#   contradicted  the run does not support it, and the write-up says why
+#   demonstrated  an engineering practice shown working, not a statistical result
+#
+# The three non-confirmed verdicts are the point of publishing this. A
+# companion repo that agrees with its article about everything has not been run.
+#
+# ----------------------------------------------------------------------------
+# Evidence pointers
+# ----------------------------------------------------------------------------
+#   metric: <file>#<dotted.path>    numeric path segments index into a list
+#   expect: {value: <n>, tol: <n>}  absolute tolerance
+#   expect: {min: <n>} / {max: <n>} one-sided bounds, for "at least" claims
+#
+# ============================================================================
+
+meta:
+  article: "Why Your Churn Model Is Not a Risk Model (And Why It Matters)"
+  ledger_version: "1.0.0"
+
+claims:
+
+  # ---------------------------------------------------------------- labels --
+  - id: LBL-01
+    theme: Labels
+    article_claim: >-
+      The churn label is a window you choose, not a fact. Too short and people
+      on holiday get labelled as churned.
+    figure: Fig 1a
+    verdict: confirmed
+    tested_by: 01_churn_batch_pipeline.py
+    where: section 1
+    docs: docs/pipelines.md#the-label-is-a-window-you-choose
+    evidence:
+      - metric: churn_metrics.json#label_windows.0.false_alarm_share
+        expect: {value: 0.532, tol: 0.06}
+        reads: "a 7-day window mislabels 53% of its churners: they came back"
+      - metric: churn_metrics.json#label_windows.3.false_alarm_share
+        expect: {value: 0.024, tol: 0.02}
+        reads: "a 60-day window mislabels only 2%, and confirms two months too late"
+
+  - id: LBL-02
+    theme: Labels
+    article_claim: >-
+      Chargebacks land 30 to 90 days after the transaction, so the newest data
+      has no labels yet. This is label maturation.
+    figure: Fig 1b
+    verdict: confirmed
+    tested_by: 02_risk_realtime_pipeline.py
+    where: section 2
+    docs: docs/pipelines.md#label-maturation-is-the-binding-constraint
+    evidence:
+      - metric: risk_metrics.json#labels_visible_today.true_frauds
+        expect: {value: 1420, tol: 60}
+        reads: "1,420 transactions really were fraud"
+      - metric: risk_metrics.json#labels_visible_today.chargebacks_on_file
+        expect: {value: 959, tol: 60}
+        reads: "only 959 have a chargeback on file today"
+      - metric: risk_metrics.json#maturation.trainable_share
+        expect: {value: 0.586, tol: 0.05}
+        reads: "59% of the stream is old enough to trust"
+
+  - id: LBL-03
+    theme: Labels
+    article_claim: >-
+      Train only on matured labels. Training on the labels you happen to have
+      today means training on frauds marked legitimate.
+    verdict: confirmed
+    tested_by: 02_risk_realtime_pipeline.py
+    where: section 2
+    docs: docs/pipelines.md#label-maturation-is-the-binding-constraint
+    evidence:
+      - metric: risk_metrics.json#maturation.pr_auc_naive_labels
+        expect: {value: 0.885, tol: 0.04}
+        reads: "training on today's labels scores 0.885 on the drift week"
+      - metric: risk_metrics.json#maturation.pr_auc_oracle_labels
+        expect: {value: 0.909, tol: 0.04}
+        reads: "the same rows with true labels score 0.909; the gap is the tax"
+      - metric: risk_metrics.json#maturation.pr_auc_matured_only
+        expect: {value: 0.855, tol: 0.04}
+        reads: "the honest matured-only model scores 0.855 and is 90 days stale"
+
+  - id: LBL-04
+    theme: Labels
+    article_claim: >-
+      Validate on a time-based split, never a random one. A fraud model that
+      shines on a shuffled test set is usually memorising last quarter's attacks.
+    verdict: confirmed
+    tested_by: 02_risk_realtime_pipeline.py
+    where: section 3
+    docs: docs/pipelines.md#out-of-time-never-shuffled
+    evidence:
+      - metric: risk_metrics.json#validation.same_rows_shuffled_model
+        expect: {value: 0.988, tol: 0.03}
+        reads: "the shuffled-split model scores 0.988 on held-out drift-week rows"
+      - metric: risk_metrics.json#validation.same_rows_time_split_model
+        expect: {value: 0.877, tol: 0.04}
+        reads: "the time-split model scores 0.877 on the identical rows"
+
+  # -------------------------------------------------------------- features --
+  - id: FTR-01
+    theme: Features
+    article_claim: >-
+      Features must be built point-in-time. If future data leaks in, offline
+      AUC looks great and production disappoints.
+    figure: Fig 4
+    verdict: confirmed
+    tested_by: 01_churn_batch_pipeline.py
+    where: section 2
+    docs: docs/pipelines.md#point-in-time-features
+    evidence:
+      - metric: churn_metrics.json#leakage.leaky_model_leaky_eval
+        expect: {value: 0.904, tol: 0.04}
+        reads: "the leaky model scores 0.904 when evaluated the same leaky way"
+      - metric: churn_metrics.json#leakage.leaky_model_real_features
+        expect: {value: 0.470, tol: 0.06}
+        reads: "the same model scores 0.470 once asked about the future"
+      - metric: churn_metrics.json#leakage.point_in_time_model
+        expect: {value: 0.742, tol: 0.04}
+        reads: "the point-in-time model scores 0.742, and keeps scoring it"
+
+  - id: FTR-02
+    theme: Features
+    article_claim: >-
+      New users break both models in opposite ways. Churn features need 30 to
+      90 days of history; new accounts are the highest-fraud segment.
+    figure: Fig 5a, 5b
+    verdict: confirmed
+    tested_by: 01_churn_batch_pipeline.py, 02_risk_realtime_pipeline.py
+    where: 01 section 3, 02 section 7
+    docs: docs/pipelines.md#cold-start
+    evidence:
+      - metric: churn_metrics.json#cold_start_share
+        expect: {value: 0.034, tol: 0.02}
+        reads: "3.4% of the churn book is younger than the feature windows"
+      - metric: risk_metrics.json#cold_start.new_account_fraud_rate
+        expect: {value: 0.0702, tol: 0.02}
+        reads: "new accounts carry a 7.0% fraud rate"
+      - metric: risk_metrics.json#cold_start.aged_account_fraud_rate
+        expect: {value: 0.0044, tol: 0.003}
+        reads: "aged accounts carry 0.44%, so new accounts are ~16x riskier"
+
+  # --------------------------------------------------------------- metrics --
+  - id: MET-01
+    theme: Metrics
+    article_claim: >-
+      At these base rates accuracy means nothing and even ROC-AUC flatters the
+      model. Use PR-AUC.
+    figure: Fig 7a, 7b
+    verdict: confirmed
+    tested_by: 01_churn_batch_pipeline.py, part_a_metrics.ipynb
+    where: 01 section 4
+    docs: docs/pipelines.md#metrics-and-whether-the-probabilities-are-real
+    evidence:
+      - metric: churn_metrics.json#test.roc_auc
+        expect: {min: 0.95}
+        reads: "ROC-AUC reads 0.979"
+      - metric: churn_metrics.json#test.pr_auc
+        expect: {value: 0.742, tol: 0.04}
+        reads: "PR-AUC reads 0.742 on the same model and the same rows"
+
+  - id: MET-02
+    theme: Metrics
+    article_claim: >-
+      Use precision at k, where k is real capacity: how many accounts the
+      retention team can actually call.
+    verdict: confirmed
+    tested_by: 01_churn_batch_pipeline.py
+    where: section 4
+    docs: docs/pipelines.md#metrics-and-whether-the-probabilities-are-real
+    evidence:
+      - metric: churn_metrics.json#precision_at_k.200
+        expect: {value: 0.88, tol: 0.05}
+        reads: "88% of the top 200 are real churners"
+      - metric: churn_metrics.json#test.base_rate
+        expect: {value: 0.054, tol: 0.01}
+        reads: "against a 5.4% base rate, so calling at random"
+
+  - id: MET-03
+    theme: Metrics
+    article_claim: >-
+      Calibrate the probabilities. A cost-based threshold only works if a score
+      of 0.9 really means 90%.
+    verdict: qualified
+    tested_by: 02_risk_realtime_pipeline.py
+    where: section 5
+    docs: docs/findings.md#1-the-dollar-threshold-is-a-starting-point-not-an-answer
+    caveat: >-
+      Correct, and a global calibration metric will not tell you whether it
+      holds. Overall ECE reads 0.001 while ECE inside the decision region reads
+      0.12, because the average is dominated by a population that is 99% easy
+      negatives. Measure calibration where the decisions are made.
+    evidence:
+      - metric: risk_metrics.json#threshold.ece_overall
+        expect: {max: 0.01}
+        reads: "ECE over everything is 0.001, which looks perfect"
+      - metric: risk_metrics.json#threshold.ece_decision_region
+        expect: {min: 0.05}
+        reads: "ECE over the decision region is 0.12, which is not"
+
+  # ------------------------------------------------------------------ cost --
+  - id: CST-01
+    theme: Cost
+    article_claim: >-
+      Set the threshold in dollars. Blocking a good customer costs $500 and a
+      missed fraud costs $150, so block when p > 0.77. Not 0.5.
+    figure: Fig 8
+    verdict: contradicted
+    tested_by: 02_risk_realtime_pipeline.py
+    where: section 5
+    docs: docs/findings.md#1-the-dollar-threshold-is-a-starting-point-not-an-answer
+    caveat: >-
+      The arithmetic is right and the derived threshold is still the correct
+      starting point, but on measured costs 0.77 is worse than the 0.5 it was
+      meant to replace. The cost curve bottoms out at 0.38. The cause is
+      MET-03: the formula was fed probabilities that are not calibrated in the
+      band where blocking happens. Derive from costs, then recompute from the
+      inference log.
+    evidence:
+      - metric: risk_metrics.json#threshold.derived
+        expect: {value: 0.769, tol: 0.001}
+        reads: "the cost model gives 0.77, exactly as the article says"
+      - metric: risk_metrics.json#threshold.cost_at_derived
+        expect: {min: 15000}
+        reads: "blocking at 0.77 costs $19,100 over the test window"
+      - metric: risk_metrics.json#threshold.cost_at_default_half
+        expect: {max: 20000}
+        reads: "blocking at the 0.5 default costs $14,950, which is less"
+
+  - id: CST-02
+    theme: Cost
+    article_claim: >-
+      A risk false positive is expensive, so the insult rate has to stay tiny.
+    verdict: confirmed
+    tested_by: 02_risk_realtime_pipeline.py
+    where: section 6
+    docs: docs/pipelines.md#bands-and-the-rules-beside-them
+    evidence:
+      - metric: risk_metrics.json#bands.0.insult_together
+        expect: {max: 0.001}
+        reads: "0.006% of legitimate transactions are blocked"
+
+  - id: CST-03
+    theme: Cost
+    article_claim: >-
+      Four decision bands, not two. The bands catch fraud the block threshold
+      must let through to keep the insult rate low.
+    verdict: confirmed
+    tested_by: 02_risk_realtime_pipeline.py
+    where: section 6
+    docs: docs/pipelines.md#bands-and-the-rules-beside-them
+    evidence:
+      - metric: risk_metrics.json#bands.1.fraud_blocked_by_model
+        expect: {value: 0.541, tol: 0.08}
+        reads: "the block band alone stops 54% of drift-week fraud"
+      - metric: risk_metrics.json#bands.1.fraud_touched_together
+        expect: {value: 0.798, tol: 0.08}
+        reads: "all four bands together touch 80% of it"
+
+  # --------------------------------------------------------- feedback loops --
+  - id: FBK-01
+    theme: Feedback loops
+    article_claim: >-
+      Risk has a selective label problem. When a transaction is blocked, nobody
+      learns whether it was fraud, so the model goes blind where it acts.
+    figure: Fig 9a
+    verdict: confirmed
+    tested_by: 04_feedback_loops.py
+    where: part B
+    docs: docs/pipelines.md#risk-blocking-erases-the-outcome
+    evidence:
+      - metric: feedback_metrics.json#risk.fraud_censored_by_blocking
+        expect: {value: 242, tol: 60}
+        reads: "242 confirmed frauds are blocked and therefore never labelled"
+      - metric: feedback_metrics.json#risk.fraud_still_observable
+        expect: {value: 114, tol: 40}
+        reads: "only 114 remain observable, 32% of the window's fraud"
+      - metric: "feedback_metrics.json#risk.pr_auc.naive: retrain on what was allowed"
+        expect: {value: 0.656, tol: 0.06}
+        reads: "the naive retrain scores 0.656"
+      - metric: "feedback_metrics.json#risk.pr_auc.oracle: every outcome observed"
+        expect: {value: 0.904, tol: 0.04}
+        reads: "against 0.904 if every outcome had been observed"
+
+  - id: FBK-02
+    theme: Feedback loops
+    article_claim: >-
+      Fix selective labels by letting a small random slice of borderline
+      traffic through, and by using review-queue decisions as labels.
+    verdict: qualified
+    tested_by: 04_feedback_loops.py
+    where: part B
+    docs: docs/pipelines.md#risk-blocking-erases-the-outcome
+    caveat: >-
+      The exploration slice works and is cheap: 2% of blocked traffic recovers
+      two thirds of the damage. Review-queue labels made things worse here, not
+      better, because the simulated reviewers are wrong 12% of the time and a
+      wrong label in the band the model is least sure about does more harm than
+      a missing one. The article's "carefully" is doing a lot of work.
+    evidence:
+      - metric: "feedback_metrics.json#risk.pr_auc.+ exploration slice (2%, IPW)"
+        expect: {value: 0.825, tol: 0.06}
+        reads: "a 2% exploration slice recovers to 0.825"
+      - metric: "feedback_metrics.json#risk.pr_auc.+ review-queue labels"
+        expect: {value: 0.806, tol: 0.06}
+        reads: "adding noisy review-queue labels drops it back to 0.806"
+
+  - id: FBK-03
+    theme: Feedback loops
+    article_claim: >-
+      Churn has the opposite problem. A retention offer that works makes the
+      saved customer look like someone who was never going to leave.
+    figure: Fig 9b
+    verdict: confirmed
+    tested_by: 04_feedback_loops.py
+    where: part A
+    docs: docs/pipelines.md#churn-the-intervention-erases-the-label
+    evidence:
+      - metric: feedback_metrics.json#churn.saved
+        expect: {value: 96, tol: 30}
+        reads: "96 accounts are saved and relabelled 'did not churn'"
+      - metric: feedback_metrics.json#churn.pr_auc_next_model_contaminated
+        expect: {value: 0.717, tol: 0.05}
+        reads: "next month's model trained on those labels scores 0.717"
+      - metric: feedback_metrics.json#churn.pr_auc_next_model_clean
+        expect: {value: 0.729, tol: 0.05}
+        reads: "against 0.729 trained on labels no campaign touched"
+
+  - id: FBK-04
+    theme: Feedback loops
+    article_claim: >-
+      A holdout group that gets no intervention keeps the labels clean, and is
+      the only honest way to know whether the campaigns work at all.
+    verdict: confirmed
+    tested_by: 04_feedback_loops.py
+    where: section A1
+    docs: docs/pipelines.md#churn-the-intervention-erases-the-label
+    evidence:
+      - metric: feedback_metrics.json#churn.incremental_retention
+        expect: {value: 0.067, tol: 0.03}
+        reads: "incremental retention measures +6.7% against the holdout"
+      - metric: feedback_metrics.json#churn.incremental_retention_ci_half_width
+        expect: {max: 0.04}
+        reads: "with a 95% interval of +/- 2.2%, so the effect is real"
+
+  - id: FBK-05
+    theme: Feedback loops
+    article_claim: >-
+      A high churn score says who might leave, not who can be convinced to
+      stay. The top decile contains lost causes and sleeping dogs.
+    verdict: confirmed
+    tested_by: 04_feedback_loops.py
+    where: section A3
+    docs: docs/findings.md#2-uplift-modelling-works-as-a-screen-not-as-a-ranker
+    evidence:
+      - metric: feedback_metrics.json#churn.targeting.0.lost_causes
+        expect: {min: 40}
+        reads: "73 of the 200 highest-risk accounts cannot be saved"
+      - metric: feedback_metrics.json#churn.targeting.0.sleeping_dogs
+        expect: {min: 5}
+        reads: "13 more would be pushed out the door by the call itself"
+
+  - id: FBK-06
+    theme: Feedback loops
+    article_claim: >-
+      With holdouts in place, the next step is uplift modelling: target the
+      people who can actually be persuaded (Ascarza 2018).
+    verdict: contradicted
+    tested_by: 04_feedback_loops.py
+    where: section A3
+    docs: docs/findings.md#2-uplift-modelling-works-as-a-screen-not-as-a-ranker
+    caveat: >-
+      As a ranking rule an uplift model loses to the plain churn score, by a
+      wide margin, on a quarter of randomised campaign data. Its ranking
+      correlates 0.01 with the true effect against the risk score's 0.26. Used
+      as a screen instead - drop non-positive estimated uplift, then rank by
+      risk - it beats risk targeting by 14%. The sign of a treatment effect is
+      estimable at this sample size; the per-account magnitude is not.
+    evidence:
+      - metric: feedback_metrics.json#churn.targeting.0.customers_kept
+        expect: {value: 19.24, tol: 2.5}
+        reads: "risk targeting keeps 19.2 customers per 200 calls"
+      - metric: feedback_metrics.json#churn.targeting.2.customers_kept
+        expect: {value: 16.37, tol: 2.5}
+        reads: "uplift as a ranker keeps 16.4, which is worse"
+      - metric: feedback_metrics.json#churn.targeting.3.customers_kept
+        expect: {value: 21.88, tol: 2.5}
+        reads: "uplift as a screen keeps 21.9, which is better than both"
+      - metric: feedback_metrics.json#churn.corr_uplift_with_true_effect
+        expect: {max: 0.1}
+        reads: "the uplift ranking correlates 0.01 with the true effect"
+
+  # ---------------------------------------------------------- architecture --
+  - id: ARC-01
+    theme: Architecture
+    article_claim: >-
+      The model returns a probability and nothing else. A decision layer decides
+      what it means, and business rules change without retraining the model.
+    figure: Fig 10a, 10b
+    verdict: demonstrated
+    tested_by: 03_live_scoring_demo.py
+    where: policy swap
+    docs: docs/architecture.md#the-decision-layer-is-not-the-model
+    evidence:
+      - metric: live_metrics.json#policy_swap.block_at_from
+        expect: {value: 0.769, tol: 0.001}
+        reads: "policy v1 blocks above 0.77"
+      - metric: live_metrics.json#policy_swap.block_at_to
+        expect: {value: 0.64, tol: 0.001}
+        reads: "policy v2 blocks above 0.64, from a cost change alone"
+      - metric: live_metrics.json#policy_swap.decisions_moved
+        expect: {min: 50}
+        reads: "258 decisions move across 279,030 replayed scores, no retraining"
+
+  - id: ARC-02
+    theme: Architecture
+    article_claim: >-
+      The full latency budget is 50 to 100 ms, including network, feature
+      lookup and inference.
+    figure: Fig 2b
+    verdict: confirmed
+    tested_by: 03_live_scoring_demo.py
+    where: latency
+    docs: docs/pipelines.md#03-serving-with-an-outage
+    evidence:
+      - metric: live_metrics.json#latency_healthy.p95
+        expect: {max: 80}
+        reads: "p95 is 18 ms against an 80 ms budget"
+      - metric: live_metrics.json#budget_ms
+        expect: {value: 80, tol: 0}
+        reads: "the budget is enforced by the caller, not the library default"
+
+  - id: ARC-03
+    theme: Architecture
+    article_claim: >-
+      Decide the timeout behaviour before launch. Most commerce flows fail
+      open; irreversible actions fail closed.
+    figure: Fig 11
+    verdict: demonstrated
+    tested_by: 03_live_scoring_demo.py
+    where: outage
+    docs: docs/pipelines.md#03-serving-with-an-outage
+    evidence:
+      - metric: live_metrics.json#failed_closed
+        expect: {min: 1}
+        reads: "3 irreversible actions demanded verification during the outage"
+      - metric: live_metrics.json#latency_outage_max
+        expect: {max: 200}
+        reads: "no call outlives the budget by more than a few milliseconds"
+
+  - id: ARC-04
+    theme: Architecture
+    article_claim: >-
+      Plain rules run next to the model as detectors in their own right:
+      velocity limits, blocklists.
+    verdict: confirmed
+    tested_by: 02_risk_realtime_pipeline.py, 03_live_scoring_demo.py
+    where: 02 section 6, 03 outage
+    docs: docs/architecture.md#rules-beside-the-model
+    evidence:
+      - metric: risk_metrics.json#rules.rules_only_recall_drift_week
+        expect: {min: 0.05}
+        reads: "with no model at all the rules touch 17% of drift-week fraud"
+      - metric: live_metrics.json#rule_catches_during_outage
+        expect: {min: 1}
+        reads: "and they caught fraud during the outage, with no model in the loop"
+
+  - id: ARC-05
+    theme: Architecture
+    article_claim: >-
+      Track training with MLflow and promote through a Unity Catalog alias, so
+      batch jobs simply load models:/name@champion.
+    figure: Fig 10a
+    verdict: demonstrated
+    tested_by: 01_churn_batch_pipeline.py, 03_live_scoring_demo.py
+    where: 01 section 6
+    docs: docs/architecture.md#mlflow-is-real-mlflow
+    evidence:
+      - metric: churn_metrics.json#promoted_to_champion
+        expect: {value: 1, tol: 0}
+        reads: "the churn model takes the @champion alias after beating the incumbent"
+      - metric: risk_metrics.json#promoted_to_champion
+        expect: {value: 1, tol: 0}
+        reads: "so does the risk model"
+
+  # ------------------------------------------------------------ monitoring --
+  - id: MON-01
+    theme: Monitoring
+    article_claim: >-
+      Churn drifts over months, so a monthly look at distributions is enough.
+    figure: Fig 12a
+    verdict: confirmed
+    tested_by: 05_monitoring_two_clocks.py
+    where: churn section
+    docs: docs/pipelines.md#05-monitoring-on-two-clocks
+    evidence:
+      - metric: monitoring_metrics.json#churn.max_worst_psi
+        expect: {value: 0.276, tol: 0.06}
+        reads: "the worst signal peaks at 0.276 and decays without intervention"
+      - metric: monitoring_metrics.json#churn.alerts
+        expect: {max: 2}
+        reads: "one threshold crossing in four monthly checks"
+
+  - id: MON-02
+    theme: Monitoring
+    article_claim: >-
+      Fraud goes stale in days. That side needs tight alerts and fast
+      retraining, because a sudden drop is usually an adversary.
+    figure: Fig 12b
+    verdict: qualified
+    tested_by: 05_monitoring_two_clocks.py
+    where: risk section
+    docs: docs/findings.md#3-monitor-the-flag-rate-not-only-the-feature-distributions
+    caveat: >-
+      True, but distribution monitoring is the wrong instrument. A 0.72%-of-
+      traffic attack never moves a population PSI at any usable threshold. What
+      catches it in three days is the flag rate - the share of traffic scoring
+      above the challenge band - over a trailing week, against a rolling
+      reference rather than a fixed one.
+    evidence:
+      - metric: monitoring_metrics.json#risk.first_psi_alert_day
+        expect: {is_null: true}
+        reads: "population PSI never alerts, across all 55 monitored days"
+      - metric: monitoring_metrics.json#risk.first_flag_rate_alert_day
+        expect: {value: 203, tol: 5}
+        reads: "the flag rate alerts on day 203, three days after the change"
+      - metric: monitoring_metrics.json#risk.false_alarms_before_change_z_score
+        expect: {value: 0, tol: 0}
+        reads: "with no false alarms across the quiet days before it"
+
+  - id: MON-03
+    theme: Monitoring
+    article_claim: >-
+      Label maturation controls the retraining schedule more than any drift
+      chart does.
+    verdict: confirmed
+    tested_by: 05_monitoring_two_clocks.py
+    where: risk section
+    docs: docs/findings.md#3-monitor-the-flag-rate-not-only-the-feature-distributions
+    evidence:
+      - metric: monitoring_metrics.json#risk.label_based_detection_day
+        expect: {value: 290, tol: 0}
+        reads: "a label-based chart cannot move until day 290"
+      - metric: monitoring_metrics.json#risk.head_start_days
+        expect: {min: 60}
+        reads: "the label-free alarm buys 87 days of head start"
+
+  # ------------------------------------------------------------- real data --
+  - id: DAT-01
+    theme: Data
+    article_claim: >-
+      Monthly churn might be 2 to 5% positive; fraud is often 0.1 to 1% of
+      transactions.
+    verdict: confirmed
+    tested_by: 01_churn_batch_pipeline.py, 02_risk_realtime_pipeline.py
+    where: 01 section 4, 02 section 1
+    docs: docs/pipelines.md#01-churn-the-batch-path
+    evidence:
+      - metric: churn_metrics.json#test.base_rate
+        expect: {value: 0.054, tol: 0.02}
+        reads: "the simulated book churns at 5.4% per 30-day window"
+      - metric: risk_metrics.json#true_fraud_rate
+        expect: {value: 0.0051, tol: 0.004}
+        reads: "the simulated stream is 0.51% fraud"
+
+  - id: DAT-02
+    theme: Data
+    article_claim: >-
+      The metric story is not an artefact of simulated data.
+    verdict: confirmed
+    tested_by: 01_churn_batch_pipeline.py
+    where: section 7
+    docs: docs/pipelines.md#01-churn-the-batch-path
+    evidence:
+      - metric: churn_metrics.json#telco_cross_check.pr_auc
+        expect: {value: 0.648, tol: 0.05}
+        reads: "on the public IBM Telco dataset the same recipe scores 0.648"
+      - metric: churn_metrics.json#telco_cross_check.precision_at_200
+        expect: {value: 0.76, tol: 0.08}
+        reads: "with precision@200 of 76% against a 26.5% base rate"

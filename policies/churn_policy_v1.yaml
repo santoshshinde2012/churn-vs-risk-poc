@@ -1,0 +1,43 @@
+# Churn decision policy.
+#
+# Same separation as the risk side: the model returns a probability, this file
+# decides what happens. The differences are all in the numbers. Churn actions
+# are cheap and reversible, the constraint is the team's calling capacity
+# rather than a latency budget, and the clock is monthly rather than daily.
+
+version: "1.0.0"
+name: churn-retention-batch
+kind: tiered              # nothing is ever refused; higher scores buy a richer contact
+
+costs:
+  false_positive: 25      # a discount handed to someone who was staying anyway
+  false_negative: 900     # a customer lost: remaining lifetime value
+  contact: 8              # loaded cost of one retention call
+
+# Churn "bands" are contact tiers, not blocking decisions. Nobody gets cut off.
+bands:
+  nurture: 0.10           # automated email
+  call: 0.35              # a human call, subject to capacity
+
+# Capacity is the real constraint: precision at k, where k is what the team can
+# actually work. Set this to the number of calls per night.
+capacity:
+  calls_per_night: 200
+  emails_per_night: 2000
+
+# The holdout never receives an intervention. It is the only way to measure
+# incremental retention, and it keeps future training labels clean.
+holdout:
+  share: 0.15
+  assignment: stable_hash   # keyed on customer id, so membership never moves
+
+# The label is a window you choose, not a fact. 30 days of silence is the
+# default here; 01_churn_batch_pipeline.py shows what other choices do.
+label:
+  inactivity_days: 30
+  min_history_days: 30      # below this the account is a cold start
+
+monitoring:
+  cadence_days: 30
+  psi_watch: 0.10
+  psi_alert: 0.25

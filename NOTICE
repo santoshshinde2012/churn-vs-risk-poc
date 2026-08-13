@@ -1,0 +1,40 @@
+Churn vs Risk POC
+Copyright 2026 Santosh Shinde
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+--------------------------------------------------------------------------------
+Third-party content
+--------------------------------------------------------------------------------
+
+data/telco_churn.csv
+    IBM Telco Customer Churn sample dataset, published by IBM as sample data for
+    IBM Cognos Analytics. Included here unmodified as a real-data cross-check.
+    Source: https://github.com/IBM/telco-customer-churn-on-icp4d
+
+All other data in this repository is synthetic, generated at run time by
+churnrisk/churn_data.py and churnrisk/risk_data.py from fixed seeds. No personal
+data is distributed with this project.
+
+docs/article/
+    The article this project accompanies, and its diagrams. Authored by the
+    copyright holder and distributed here under the same Apache-2.0 licence as
+    the code.
+
+--------------------------------------------------------------------------------
+Referenced work
+--------------------------------------------------------------------------------
+
+Ascarza, E. (2018). "Retention Futility: Targeting High-Risk Customers Might Be
+    Ineffective." Journal of Marketing Research, 55(1), 80-98.
+
+Lakkaraju, H., Kleinberg, J., Leskovec, J., Ludwig, J., & Mullainathan, S.
+    (2017). "The Selective Labels Problem: Evaluating Algorithmic Predictions in
+    the Presence of Unobservables." KDD '17.
+
+These are cited by the accompanying article and reproduced in spirit by
+04_feedback_loops.py. No text or figures from either work are included here.

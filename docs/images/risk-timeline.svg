@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 420" width="1040" height="420"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+     role="img" aria-labelledby="title desc">
+  <title id="title">The fraud problem is a problem about time</title>
+  <desc id="desc">A 300-day timeline. Trustworthy training labels stop on day 150. The
+    attack starts on day 200. A label-free alarm fires on day 203. The chargebacks that
+    would prove it only mature on day 290, an 87-day gap.</desc>
+
+  <defs>
+    <marker id="tick" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5"
+            orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#52514e"/>
+    </marker>
+  </defs>
+
+  <rect width="1040" height="420" rx="10" fill="#fcfcfb"/>
+
+  <text x="34" y="40" font-size="17" font-weight="600" fill="#0b0b0b">Why the risk side runs on a fast clock</text>
+  <text x="34" y="62" font-size="12.5" fill="#52514e">The model can only be trained on data old enough to have chargebacks. The attacker does not wait for them.</text>
+
+  <!-- ============================ bands ================================= -->
+  <!-- x scale: day 0 -> x=70, day 300 -> x=990.  x = 70 + day * 3.0667 -->
+
+  <!-- trustworthy training window: days 0-150 -->
+  <rect x="70" y="96" width="460" height="46" rx="4" fill="#e8f0fb" stroke="#2a78d6"/>
+  <text x="300" y="117" font-size="12.5" font-weight="600" fill="#0b0b0b" text-anchor="middle">Trustworthy training data</text>
+  <text x="300" y="134" font-size="11" fill="#52514e" text-anchor="middle">days 0&#8211;150 &#183; chargebacks have had 90 days to arrive</text>
+
+  <!-- blind window: days 150-240 -->
+  <rect x="530" y="96" width="276" height="46" rx="4" fill="#fdf3ef" stroke="#eb6834" stroke-dasharray="5 3"/>
+  <text x="668" y="117" font-size="12.5" font-weight="600" fill="#0b0b0b" text-anchor="middle">The blind window</text>
+  <text x="668" y="134" font-size="11" fill="#52514e" text-anchor="middle">partially labelled, and biased one way</text>
+
+  <!-- future -->
+  <rect x="806" y="96" width="184" height="46" rx="4" fill="#f4f4f2" stroke="#d8d7d3" stroke-dasharray="3 4"/>
+  <text x="898" y="122" font-size="11" fill="#52514e" text-anchor="middle">labels still arriving</text>
+
+  <!-- ============================ axis ================================== -->
+  <line x1="70" y1="172" x2="1000" y2="172" stroke="#52514e" stroke-width="1.4" marker-end="url(#tick)"/>
+  <g font-size="10.5" fill="#52514e" text-anchor="middle">
+    <line x1="70" y1="168" x2="70" y2="177" stroke="#52514e"/><text x="70" y="192">day 0</text>
+    <line x1="530" y1="168" x2="530" y2="177" stroke="#52514e"/><text x="530" y="192">150</text>
+    <line x1="683" y1="168" x2="683" y2="177" stroke="#52514e"/><text x="683" y="192">200</text>
+    <line x1="806" y1="168" x2="806" y2="177" stroke="#52514e"/><text x="806" y="192">240</text>
+    <line x1="959" y1="168" x2="959" y2="177" stroke="#52514e"/><text x="959" y="192">290</text>
+  </g>
+
+  <!-- ============================ events ================================ -->
+  <!-- day 150: training cutoff -->
+  <line x1="530" y1="142" x2="530" y2="166" stroke="#2a78d6" stroke-width="1.6" stroke-dasharray="4 3"/>
+  <line x1="530" y1="200" x2="530" y2="240" stroke="#2a78d6" stroke-width="1.6" stroke-dasharray="4 3"/>
+  <circle cx="530" cy="240" r="5" fill="#2a78d6"/>
+  <text x="524" y="262" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="end">Training data stops</text>
+  <text x="524" y="278" font-size="11" fill="#52514e" text-anchor="end">not a choice &#8212; anything newer</text>
+  <text x="524" y="292" font-size="11" fill="#52514e" text-anchor="end">is partly mislabelled</text>
+
+  <!-- day 200: attack -->
+  <line x1="683" y1="142" x2="683" y2="166" stroke="#0b0b0b" stroke-width="1.8"/>
+  <line x1="683" y1="200" x2="683" y2="216" stroke="#0b0b0b" stroke-width="1.8"/>
+  <circle cx="683" cy="216" r="5" fill="#0b0b0b"/>
+  <text x="675" y="238" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="end">Tactics change</text>
+  <text x="675" y="254" font-size="11" fill="#52514e" text-anchor="end">card testing begins</text>
+
+  <!-- day 203: alarm -->
+  <line x1="692" y1="142" x2="692" y2="166" stroke="#1baf7a" stroke-width="1.6"/>
+  <line x1="692" y1="200" x2="692" y2="326" stroke="#1baf7a" stroke-width="1.6"/>
+  <circle cx="692" cy="326" r="5" fill="#1baf7a"/>
+  <text x="700" y="330" font-size="12" font-weight="600" fill="#0b0b0b">Flag-rate alarm fires &#8212; day 203</text>
+  <text x="700" y="346" font-size="11" fill="#52514e">no labels needed. Population PSI never fires at all.</text>
+
+  <!-- day 290: labels usable -->
+  <line x1="959" y1="142" x2="959" y2="166" stroke="#eb6834" stroke-width="1.8" stroke-dasharray="5 3"/>
+  <line x1="959" y1="200" x2="959" y2="216" stroke="#eb6834" stroke-width="1.8" stroke-dasharray="5 3"/>
+  <circle cx="959" cy="216" r="5" fill="#eb6834"/>
+  <text x="951" y="238" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="end">Chargebacks mature</text>
+  <text x="951" y="254" font-size="11" fill="#52514e" text-anchor="end">the earliest a PR-AUC chart can move</text>
+
+  <!-- ============================ the gap =============================== -->
+  <line x1="692" y1="380" x2="959" y2="380" stroke="#52514e" stroke-width="1.2"/>
+  <line x1="692" y1="374" x2="692" y2="386" stroke="#52514e" stroke-width="1.2"/>
+  <line x1="959" y1="374" x2="959" y2="386" stroke="#52514e" stroke-width="1.2"/>
+  <rect x="762" y="368" width="128" height="24" rx="12" fill="#fcfcfb"/>
+  <text x="826" y="384" font-size="11.5" font-weight="600" fill="#0b0b0b" text-anchor="middle">87 days of head start</text>
+
+  <!-- left-hand note -->
+  <text x="70" y="330" font-size="11.5" fill="#52514e">Between day 150 and day 203 the only things defending you are</text>
+  <text x="70" y="346" font-size="11.5" fill="#52514e">plain rules and a model trained on 90-day-old data. That gap is</text>
+  <text x="70" y="362" font-size="11.5" fill="#52514e">why the risk side keeps rules, and why it never waits for labels.</text>
+</svg>

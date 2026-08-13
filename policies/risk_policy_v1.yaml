@@ -1,0 +1,66 @@
+# Risk decision policy.
+#
+# This file is the decision layer. The model returns a probability and nothing
+# else; everything about what that probability *means* is here, versioned, and
+# changeable without retraining. Bump `version` on every change: the version is
+# written into every row of the inference log, so a shift in decision mix can
+# always be traced back to the policy that produced it.
+
+version: "1.0.0"
+name: risk-checkout-scorer
+kind: blocking            # above the cost-derived threshold the action is refused
+
+# The block threshold is derived from these two numbers, not typed in below.
+# block when p * false_negative > (1 - p) * false_positive
+#   =>  p > false_positive / (false_positive + false_negative) = 0.77
+costs:
+  false_positive: 500     # blocking a good customer: lost lifetime value
+  false_negative: 150     # missing a fraud: chargeback plus fees
+  review_case: 12         # analyst time for one manual review
+  challenge: 3            # expected drop-off cost of a step-up MFA prompt
+
+# Bands below the block threshold. An action fires at or above its floor.
+# The bands exist because the block threshold has to stay high to protect the
+# insult rate, which leaves real fraud underneath it that still needs handling.
+bands:
+  challenge: 0.30         # step-up MFA
+  review: 0.60            # manual review queue
+
+# The latency budget from the article: network, feature lookup and inference.
+timeout_ms: 80
+
+# What to do when the model does not answer inside the budget.
+# Most commerce flows fail open so a scoring outage does not take down checkout.
+# Irreversible actions fail closed, because the downside is not symmetric.
+fail_modes:
+  default: open
+  checkout: open
+  login: open
+  withdrawal: closed
+  password_change: closed
+  payout: closed
+
+# Plain rules that run beside the model as detectors in their own right.
+# They do not need the model to be up, and they cover the window between a
+# tactic change and the retrain that learns it.
+rules:
+  velocity:
+    max_txn_60s: 6              # more than this in a minute is not a human
+    max_txn_10min: 25
+    action: review
+  new_account:
+    max_age_days: 30            # brand-new accounts are the highest-fraud segment
+    max_amount: 250             # stricter default until the account ages
+    action: challenge
+  network:
+    max_accounts_per_device: 4  # a device serving many accounts is a ring signal
+    action: review
+  blocklist:
+    action: block               # a confirmed-bad device or card is not a probability
+
+# Monitoring cadence. Fraud has an adversary on the other side, so this side
+# runs on a daily clock with tight thresholds.
+monitoring:
+  cadence_days: 1
+  psi_watch: 0.10
+  psi_alert: 0.25

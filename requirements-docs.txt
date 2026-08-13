@@ -1,0 +1,4 @@
+# Only needed to build the documentation site. The docs themselves are plain
+# Markdown and render fine on GitHub without any of this.
+mkdocs==1.6.1
+mkdocs-material==9.5.44

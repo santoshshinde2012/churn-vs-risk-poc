@@ -1,0 +1,84 @@
+# MkDocs Material configuration.
+#
+# The site is a convenience, not the source of truth: every page under docs/ is
+# plain GitHub-flavoured Markdown that renders correctly in a repo browser, a
+# fork, or an offline clone. Nothing here is required to read the project.
+#
+#   pip install -r requirements-docs.txt
+#   mkdocs serve          # http://127.0.0.1:8000
+#   mkdocs build          # -> site/
+
+site_name: Churn vs Risk
+site_description: >-
+  Runnable companion code for "Why Your Churn Model Is Not a Risk Model" —
+  two production ML pipelines, built end to end, with every claim verified.
+site_author: Santosh Shinde
+repo_url: https://github.com/santoshshinde2012/churn-vs-risk-poc
+repo_name: churn-vs-risk-poc
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Santosh Shinde — Apache-2.0
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  icon:
+    logo: material/scale-balance
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle: {icon: material/brightness-auto, name: Follow system}
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep orange
+      toggle: {icon: material/brightness-7, name: Switch to dark}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep orange
+      toggle: {icon: material/brightness-4, name: Switch to light}
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+nav:
+  - Home: index.md
+  - The article: article/churn-vs-risk-medium.md
+  - Getting started: getting-started.md
+  - The pipelines: pipelines.md
+  - Findings: findings.md
+  - Architecture: architecture.md
+  - Claims ledger: claims.md
+  - Sample run: sample_run.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc: {permalink: true, toc_depth: 3}
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight: {anchor_linenums: true}
+  - pymdownx.inlinehilite
+  - pymdownx.snippets: {base_path: [docs], check_paths: true}
+  - pymdownx.tabbed: {alternate_style: true}
+
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/santoshshinde2012/churn-vs-risk-poc
+  generator: false
