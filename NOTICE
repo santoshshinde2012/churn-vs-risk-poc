@@ -20,11 +20,6 @@ All other data in this repository is synthetic, generated at run time by
 churnrisk/churn_data.py and churnrisk/risk_data.py from fixed seeds. No personal
 data is distributed with this project.
 
-docs/article/
-    The article this project accompanies, and its diagrams. Authored by the
-    copyright holder and distributed here under the same Apache-2.0 licence as
-    the code.
-
 --------------------------------------------------------------------------------
 Referenced work
 --------------------------------------------------------------------------------

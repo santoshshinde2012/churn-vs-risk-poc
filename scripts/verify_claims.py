@@ -32,7 +32,6 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 METRICS = ROOT / "outputs" / "metrics"
 LEDGER = ROOT / "docs" / "claims.yaml"
-ARTICLE = ROOT / "docs" / "article" / "churn-vs-risk-medium.md"
 RENDERED = ROOT / "docs" / "claims.md"
 
 # claims.md is read both on GitHub and inside the MkDocs site. Links to files
@@ -132,40 +131,6 @@ def doc_anchors(path: Path) -> set[str]:
             for line in path.read_text().splitlines() if line.startswith("#")}
 
 
-def check_article(failures: list) -> None:
-    """The article embeds result figures from a run. Keep those honest too.
-
-    The result figures in docs/article/ come from outputs/plots via docs/images.
-    Each carries a caption beginning "Measured" and a link to the script that
-    produced it, which is the only thing telling a reader that a figure is a
-    measurement rather than one of the hand-drawn concept diagrams beside it.
-
-    A renamed figure, a dropped caption or a retired claim ID would leave the
-    published article showing a broken image or citing something that no longer
-    exists - and nobody would notice, because prose does not fail a build.
-    """
-    if not ARTICLE.exists():
-        return
-    text = ARTICLE.read_text()
-
-    for reference in re.findall(r"\]\((\.\./images/[^)]+)\)", text):
-        if not (ARTICLE.parent / reference).resolve().exists():
-            failures.append(f"article: embeds a missing figure '{reference}'")
-
-    known = {claim["id"] for claim in yaml.safe_load(LEDGER.read_text())["claims"]}
-    for cited in re.findall(r"claims\.md#([a-z]{3}-\d{2})", text):
-        if cited.upper() not in known:
-            failures.append(f"article: cites claim '{cited.upper()}', which is not in the ledger")
-
-    # Every embedded result figure must be followed by a *Measured ...* caption.
-    embedded = re.findall(r"!\[[^\]]*\]\(\.\./images/[^)]+\)\n(.*)", text)
-    for caption in embedded:
-        if not caption.lstrip("*").startswith("Measured"):
-            failures.append(f"article: a result figure is captioned {caption[:48]!r}; "
-                            f"result captions must start with 'Measured' so a reader can "
-                            f"tell a measurement from a drawing")
-
-
 def verify(ledger: dict) -> tuple[list, list]:
     """Returns (results, failures). One result row per claim."""
     cache: dict = {}
@@ -213,7 +178,6 @@ def verify(ledger: dict) -> tuple[list, list]:
 
         results.append({"claim": claim, "checked": checked})
 
-    check_article(failures)
     return results, failures
 
 
@@ -233,8 +197,11 @@ def render(ledger: dict, results: list) -> str:
     add("")
     add("# The claims ledger")
     add("")
-    add(f'Every substantive claim in **"{ledger["meta"]["article"]}"**, with a verdict and a')
-    add("pointer to the metric that settles it.")
+    title = ledger["meta"]["article"]
+    url = ledger["meta"].get("article_url")
+    headline = f"[{title}]({url})" if url else f'"{title}"'
+    add(f"Every substantive claim in **{headline}**, with a verdict and a pointer to the")
+    add("metric that settles it.")
     add("")
     add("This page is generated from [`claims.yaml`](claims.yaml) by")
     add(f"[`scripts/verify_claims.py`]({REPO}scripts/verify_claims.py), which resolves every")

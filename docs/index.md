@@ -2,7 +2,7 @@
 
 **Two production ML pipelines, built end to end — and every claim about them checked.**
 
-Companion code for *"Why Your Churn Model Is Not a Risk Model (And Why It Matters)"*.
+Companion code for **[Why Your Churn Model Is Not a Risk Model (And Why It Matters)](https://medium.com/ai-that-ships/why-your-churn-model-is-not-a-risk-model-and-why-it-matters-963e1f9bd2e9)**.
 
 The article argues that churn prediction and fraud prediction are different jobs that need
 different pipelines. This project builds both and **checks** the claims instead of restating
@@ -20,9 +20,9 @@ a month. The distance between acting and knowing is what forces the two systems 
 
 <div class="grid cards" markdown>
 
-- **[The article](article/churn-vs-risk-medium.md)**
+- **[The article](https://medium.com/ai-that-ships/why-your-churn-model-is-not-a-risk-model-and-why-it-matters-963e1f9bd2e9)**
 
-    The piece this project accompanies, in full, with its own diagrams.
+    The piece this project accompanies, published on Medium.
 
 - **[Getting started](getting-started.md)**
 

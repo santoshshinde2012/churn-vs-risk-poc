@@ -3,8 +3,8 @@
 
 # The claims ledger
 
-Every substantive claim in **"Why Your Churn Model Is Not a Risk Model (And Why It Matters)"**, with a verdict and a
-pointer to the metric that settles it.
+Every substantive claim in **[Why Your Churn Model Is Not a Risk Model (And Why It Matters)](https://medium.com/ai-that-ships/why-your-churn-model-is-not-a-risk-model-and-why-it-matters-963e1f9bd2e9)**, with a verdict and a pointer to the
+metric that settles it.
 
 This page is generated from [`claims.yaml`](claims.yaml) by
 [`scripts/verify_claims.py`](https://github.com/santoshshinde2012/churn-vs-risk-poc/blob/main/scripts/verify_claims.py), which resolves every
@@ -331,7 +331,7 @@ Runs in `03_live_scoring_demo.py`, policy swap. Written up in [docs/architecture
 
 | Measurement | Value | |
 | :--- | :--- | :-- |
-| p95 is 18 ms against an 80 ms budget | `16.4394 <= 80` | ✅ |
+| p95 is 18 ms against an 80 ms budget | `18.6683 <= 80` | ✅ |
 | the budget is enforced by the caller, not the library default | `80 vs 80 +/- 0` | ✅ |
 
 Runs in `03_live_scoring_demo.py`, latency. Written up in [docs/pipelines.md](pipelines.md#03-serving-with-an-outage).
@@ -345,7 +345,7 @@ Runs in `03_live_scoring_demo.py`, latency. Written up in [docs/pipelines.md](pi
 | Measurement | Value | |
 | :--- | :--- | :-- |
 | 3 irreversible actions demanded verification during the outage | `3 >= 1` | ✅ |
-| no call outlives the budget by more than a few milliseconds | `87.4412 <= 200` | ✅ |
+| no call outlives the budget by more than a few milliseconds | `85.334 <= 200` | ✅ |
 
 Runs in `03_live_scoring_demo.py`, outage. Written up in [docs/pipelines.md](pipelines.md#03-serving-with-an-outage).
 

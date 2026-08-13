@@ -158,5 +158,3 @@ site/
 #                           meant to be diffed and reviewed like code.
 #   docs/claims.md          generated, but committed: CI diffs it to catch a
 #                           ledger that was edited without being re-rendered.
-#   docs/article/           the article itself and its diagrams. It is the thing
-#                           the whole repo accompanies.
