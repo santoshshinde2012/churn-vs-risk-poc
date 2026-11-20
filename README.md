@@ -10,6 +10,7 @@ Companion code for **[Why Your Churn Model Is Not a Risk Model (And Why It Matte
 [![Python 3.10–3.13](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-2a78d6)](https://www.python.org/)
 [![License Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-1baf7a)](LICENSE)
 [![Claims verified 28](https://img.shields.io/badge/claims%20verified-28-8a5cd1)](docs/claims.md)
+[![Buy Me a Coffee](https://img.shields.io/badge/buymeacoffee-black?style=for-the-badge&logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/santoshshin)
 
 [Read the article](https://medium.com/ai-that-ships/why-your-churn-model-is-not-a-risk-model-and-why-it-matters-963e1f9bd2e9) ·
 [Getting started](docs/getting-started.md) ·
